@@ -202,6 +202,37 @@ class PageTests(TestCase):
         self.assertContains(page, "amd-ryzen-7-6800h")
 
 
+class DatabaseUrlTests(TestCase):
+    """DATABASE_URL с Render: понятные ошибки вместо трейсбека, без пароля в тексте ошибки."""
+    PG = "postgresql://owner:s3cret@ep-x-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+
+    def test_plain_and_wrapped_connection_strings(self):
+        from narod.dburl import config
+        for raw in (self.PG, f"  {self.PG}\n", f"'{self.PG}'", f"psql '{self.PG}'", f'"{self.PG}"'):
+            d = config(raw, default="sqlite:///x.db", required=True)
+            self.assertEqual(d["ENGINE"], "django.db.backends.postgresql", raw)
+            self.assertEqual(d["HOST"], "ep-x-pooler.eu-central-1.aws.neon.tech")
+            self.assertEqual(d["OPTIONS"]["sslmode"], "require")
+
+    def test_web_link_instead_of_connection_string(self):
+        from django.core.exceptions import ImproperlyConfigured
+        from narod.dburl import config
+        with self.assertRaises(ImproperlyConfigured) as e:
+            config("https://console.neon.tech/app/projects/abc?password=s3cret", default="sqlite:///x.db", required=True)
+        msg = str(e.exception)
+        self.assertIn("postgresql://", msg)
+        self.assertIn("https://", msg)
+        self.assertNotIn("s3cret", msg)
+
+    def test_empty(self):
+        from django.core.exceptions import ImproperlyConfigured
+        from narod.dburl import config
+        self.assertEqual(config("", default="sqlite:///x.db", required=False)["ENGINE"], "django.db.backends.sqlite3")
+        with self.assertRaises(ImproperlyConfigured) as e:
+            config("  ", default="sqlite:///x.db", required=True)
+        self.assertIn("не задан", str(e.exception))
+
+
 class ServerTests(TestCase):
     def test_dual_stack_accepts_ipv4_and_ipv6(self):
         """Локальный сервер слушает [::] и принимает подключения и по 127.0.0.1, и по ::1."""

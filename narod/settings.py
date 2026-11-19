@@ -8,7 +8,7 @@
 import os
 from pathlib import Path
 
-import dj_database_url
+from . import dburl
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 RENDER_HOST = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "")
@@ -68,10 +68,9 @@ TEMPLATES = [
 WSGI_APPLICATION = "narod.wsgi.application"
 
 DATABASES = {
-    "default": dj_database_url.config(
-        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
-        conn_max_age=600, conn_health_checks=True,
-    )
+    # на Render (там всегда есть переменная RENDER) база обязательна, локально — SQLite
+    "default": dburl.config(os.environ.get("DATABASE_URL"), default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+                            required=bool(os.environ.get("RENDER"))),
 }
 if DATABASES["default"]["ENGINE"].endswith("sqlite3"):
     DATABASES["default"].setdefault("OPTIONS", {})["timeout"] = 20
