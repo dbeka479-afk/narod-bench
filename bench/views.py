@@ -13,7 +13,7 @@ from . import payload
 from .engine import analysis, cpus, meta
 from .models import Result
 
-ASSET_V = "5"
+ASSET_V = "6"
 
 # Защита топа от засорения: не больше SAVE_LIMIT сохранений с одного адреса за SAVE_WINDOW секунд.
 SAVE_LIMIT, SAVE_WINDOW = 8, 15 * 60

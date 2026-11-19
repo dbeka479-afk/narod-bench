@@ -101,6 +101,16 @@ class PayloadTests(TestCase):
         self.assertEqual(c["freq"], dict(single=None, multi=None, hot=None))
         self.assertIsNone(c["fps"]["fps"])
 
+    def test_ram_and_windows_version(self):
+        p = fake()
+        p["system"].update(ram=8, os="Windows 11")
+        c = clean(p)
+        self.assertEqual(c["system"]["ram"], 8)
+        self.assertEqual(c["system"]["os"], "Windows 11")
+        for bad in ("много", -1, None):
+            p["system"]["ram"] = bad
+            self.assertIsNone(clean(p)["system"]["ram"])
+
 
 class AnalysisTests(TestCase):
     def save(self, **kw):
@@ -200,6 +210,21 @@ class PageTests(TestCase):
         page = self.client.get("/")
         self.assertContains(page, '"format": "narod-bench/3"')
         self.assertContains(page, "amd-ryzen-7-6800h")
+
+    def test_home_starts_empty(self):
+        """До нажатия «Начать» видны только заголовок и кнопка; данные о компьютере — в скрытом блоке."""
+        html = self.client.get("/").content.decode()
+        self.assertIn('id="go"', html)
+        self.assertRegex(html, r'<section class="run" id="run" hidden')
+        start = html[html.index('id="start"'):html.index('id="run"')]
+        for word in ("Потоков", "Графика", "Система", "Память"):
+            self.assertNotIn(word, start)
+
+    def test_result_page_shows_ram(self):
+        p = fake()
+        p["system"]["ram"] = 8
+        page = self.client.get(self.save(p).json()["url"])
+        self.assertContains(page, "8+ ГБ")
 
 
 class DatabaseUrlTests(TestCase):

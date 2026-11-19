@@ -79,6 +79,7 @@ def clean(p):
             threads=threads, cores=int(_f(s.get("cores") or threads, 1, threads)), cores_est=bool(s.get("cores_est")),
             browser=_s(s.get("browser"), 40), engine=_s(s.get("engine"), 20), os=_s(s.get("os"), 20),
             gpu=_s(s.get("gpu"), 160), power=_power(s.get("power")),
+            ram=_opt(s.get("ram"), 0.1, 4096),  # ГБ, как сообщил браузер: округлено вниз, обычно не больше 8
         )
         single, multi = {}, {}
         for k in meta.KEYS:

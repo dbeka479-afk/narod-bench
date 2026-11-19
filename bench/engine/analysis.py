@@ -233,8 +233,7 @@ def build(r):
     return dict(
         passport=passport, tests=tests, strong=strong, weak=weak, eff=eff,
         speedup=speedup, smt=smt_gain(p), health=health(r, passport, same_vals, history), history=history,
-        rank=rank, groups=len(board), total=len(rows), tiles=range(min(r.threads, 64)),
-        die_cols=r.threads if r.threads <= 8 else -(-min(r.threads, 64) // -(-min(r.threads, 64) // 8)),
+        rank=rank, groups=len(board), total=len(rows),
         pct=dict(multi=_pct_below(r.multi, [x["multi"] for x in rest]),
                  single=_pct_below(r.single, [x["single"] for x in rest]),
                  fps=_pct_below(r.fps, [x["fps"] for x in rest])),

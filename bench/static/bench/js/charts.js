@@ -1,10 +1,10 @@
 /* Два графика на canvas без библиотек: масштабирование по потокам и марафон. */
 const Charts = (() => {
   "use strict";
-  const COL = { signal: "#4d8dff", intel: "#5aa9ff", amd: "#ff6b57", apple: "#d3d8e0", other: "#5fd0c0", other2: "#b393ff" };
-  const INK = "#e8edf4", MU = "#6f7c8f", GRID = "#1b2431", BG = "#0c1118";
-  const FONT = '11px "Martian Mono", Consolas, monospace';
-  const BOLD = '600 11px "Martian Mono", Consolas, monospace';
+  const COL = { signal: "#c6ff3d", intel: "#6fb3ff", amd: "#ff7a66", apple: "#d6d6d6", other: "#6fd6c6", other2: "#b393ff" };
+  const INK = "#f1f1f1", MU = "#858585", GRID = "#232323", BG = "#171717";
+  const FONT = '500 11.5px Manrope, "Segoe UI", sans-serif';
+  const BOLD = '700 11.5px Manrope, "Segoe UI", sans-serif';
   const fmt = (n, d = 1) => Number(n).toLocaleString("ru-RU", { minimumFractionDigits: d, maximumFractionDigits: d });
 
   function setup(cv) {
