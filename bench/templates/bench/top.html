@@ -1,0 +1,66 @@
+{% extends "bench/base.html" %}
+{% load bench_extras %}
+{% block title %}Топ процессоров · Народный бенчмарк{% endblock %}
+{% block content %}
+<section class="top-head">
+  <div>
+    <h1>Топ {% if view == "cpu" %}процессоров{% else %}замеров{% endif %}</h1>
+    <p class="lead">Все, кто проверял свой компьютер на этом сайте. {% if view == "cpu" %}У каждого процессора — лучший результат среди его замеров.{% endif %}</p>
+  </div>
+  <nav class="seg" aria-label="Что показать">
+    {% for k, label in views %}<a href="?view={{ k }}&amp;sort={{ sort }}"{% if k == view %} aria-current="true"{% endif %}>{{ label }}</a>{% endfor %}
+  </nav>
+</section>
+
+<nav class="sorts" aria-label="Сортировка">
+  <span>Сортировать по</span>
+  {% for k, label in sorts %}<a href="?view={{ view }}&amp;sort={{ k }}"{% if k == sort %} aria-current="true"{% endif %}>{{ label }}</a>{% endfor %}
+</nav>
+
+{% if rows %}
+{% with lead=rows.0 %}
+<div class="table-wrap">
+<table class="board" data-sort="{{ sort }}">
+  <thead>
+    <tr>
+      <th class="place">#</th>
+      <th>{% if view == "cpu" %}Процессор{% else %}Кто и на чём{% endif %}</th>
+      <th class="num c-multi">Все ядра</th>
+      <th class="num c-single">Одно ядро</th>
+      <th class="num c-fps">FPS</th>
+      <th class="num c-freq hide-s">ГГц</th>
+      <th class="num c-eff hide-s">Очк/Вт</th>
+      <th class="num hide-s">{% if view == "cpu" %}Замеров{% else %}Дата{% endif %}</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for g in rows %}
+    {% if view == "cpu" %}{% url 'detail' g.best_id as link %}{% else %}{% url 'detail' g.id as link %}{% endif %}
+    <tr>
+      <td class="place">{{ forloop.counter }}</td>
+      <td class="who">
+        <a href="{{ link }}"><span class="vtag" data-vendor="{{ g.vendor }}">{{ g.vendor|vendor_name }}</span> {{ g.cpu|short_cpu }}</a>
+        <small>{% if view == "cpu" %}{% if g.passport %}{{ g.passport.cores }}/{{ g.passport.threads }} · {{ g.passport.year }} · {{ g.passport.segment }}{% else %}нет в справочнике{% endif %}{% else %}{{ g.name }}{% endif %}</small>
+      </td>
+      <td class="num c-multi"><span class="val">{{ g.multi|ru }}</span>{% if sort == "multi" %}<span class="hbar" style="--w: {{ g.multi|pct_of:lead.multi }}%"></span>{% endif %}</td>
+      <td class="num c-single"><span class="val">{{ g.single|ru }}</span>{% if sort == "single" %}<span class="hbar" style="--w: {{ g.single|pct_of:lead.single }}%"></span>{% endif %}</td>
+      <td class="num c-fps"><span class="val">{{ g.fps|ru }}</span>{% if sort == "fps" and g.fps %}<span class="hbar" style="--w: {{ g.fps|pct_of:lead.fps }}%"></span>{% endif %}</td>
+      <td class="num c-freq hide-s">{{ g.freq|ghz }}</td>
+      <td class="num c-eff hide-s"><span class="val">{{ g.eff|ru }}</span>{% if sort == "eff" and g.eff %}<span class="hbar" style="--w: {{ g.eff|pct_of:lead.eff }}%"></span>{% endif %}</td>
+      <td class="num hide-s muted">{% if view == "cpu" %}{{ g.count }}{% else %}{{ g.created|date:"d.m.y" }}{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endwith %}
+<p class="src">Очки: 1000 = одно ядро AMD Ryzen 7 6800H в Edge. ГГц — оценка частоты одного ядра. Очки на ватт считаются по паспортному TDP.
+  Разные браузеры выполняют JavaScript с разной скоростью, поэтому результаты в Firefox и Safari могут отличаться от Chrome и Edge.</p>
+{% else %}
+<section class="panel empty">
+  <h2>Здесь пока пусто</h2>
+  <p>Станьте первым: проверьте свой процессор — он сразу появится в топе.</p>
+  <a class="btn-go" href="{% url 'home' %}">Запустить тест</a>
+</section>
+{% endif %}
+{% endblock %}

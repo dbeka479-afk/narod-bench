@@ -1,0 +1,174 @@
+{% extends "bench/base.html" %}
+{% load static bench_extras %}
+{% block title %}{{ r.cpu }} — {{ r.multi|ru }} очков · Народный бенчмарк{% endblock %}
+{% block description %}{{ r.name }}: {{ r.cpu }} — {{ r.single|ru }} на одном ядре, {{ r.multi|ru }} на всех ядрах{% if r.fps %}, {{ r.fps|ru }} FPS{% endif %}.{% endblock %}
+{% block content %}
+{% with ps=a.passport %}
+<section class="res-head">
+  <div class="ihs-wrap">
+    <div class="ihs static" data-vendor="{{ r.vendor }}">
+      <span class="pin1" aria-hidden="true"></span>
+      <div class="etch">
+        <span class="etch-brand">{{ r.vendor|vendor_name }}</span>
+        <span class="etch-model">{{ r.cpu|short_cpu }}</span>
+        <span class="etch-sub">{% if ps %}{{ ps.cores }}C/{{ ps.threads }}T{% if ps.boost %} · до {{ ps.boost|ghz }} ГГц{% endif %} · {{ ps.year }}{% else %}{{ r.threads }} потоков{% endif %}</span>
+      </div>
+      <div class="die static" style="--n: {{ a.die_cols|default:8 }}">{% for i in a.tiles %}<i></i>{% endfor %}</div>
+    </div>
+  </div>
+
+  <div class="res-title">
+    <p class="eyebrow">Результат · {{ r.name }} · {{ r.created|date:"j E Y, H:i" }}</p>
+    <h1>{{ r.cpu }}</h1>
+    {% if a.rank %}<p class="rank"><b>{{ a.rank }}-е место</b> из {{ a.groups }} процессоров в <a href="{% url 'top' %}">топе</a> по всем ядрам</p>{% endif %}
+    {% if ps %}
+    <dl class="passport">
+      <div><dt>Ядра / потоки</dt><dd>{{ ps.cores }} / {{ ps.threads }}{% if ps.pe %} <small>({{ ps.pe }})</small>{% endif %}</dd></div>
+      <div><dt>Частота</dt><dd>{% if ps.base %}{{ ps.base|ghz }}–{% else %}до {% endif %}{{ ps.boost|ghz }} ГГц</dd></div>
+      <div><dt>Кэш L3</dt><dd>{% if ps.l3 %}{{ ps.l3 }} МБ{% else %}—{% endif %}</dd></div>
+      <div><dt>Энергопотребление</dt><dd>{{ ps.tdp_text|default:"—" }} <small>TDP</small></dd></div>
+      <div><dt>Архитектура</dt><dd>{{ ps.arch }}</dd></div>
+      <div><dt>Техпроцесс</dt><dd>{{ ps.process }}</dd></div>
+      <div><dt>Год</dt><dd>{{ ps.year }}</dd></div>
+      <div><dt>Тип</dt><dd>{{ ps.segment }}</dd></div>
+    </dl>
+    <p class="src">Паспорт — из справочника сайта. Модель подтвердил человек, который делал замер.</p>
+    {% else %}
+    <p class="src">Этого процессора нет в справочнике — паспортных данных нет. Модель вписана вручную.</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="metrics" aria-label="Главные цифры">
+  <div class="metric big">
+    <p class="m-k">Одно ядро</p>
+    <p class="m-v">{{ r.single|ru }}</p>
+    <p class="m-s">{% if a.pct.single is not None %}быстрее, чем {{ a.pct.single }}% замеров{% else %}первый замер на сайте{% endif %}</p>
+  </div>
+  <div class="metric big">
+    <p class="m-k">Все ядра</p>
+    <p class="m-v">{{ r.multi|ru }}</p>
+    <p class="m-s">{% if a.pct.multi is not None %}быстрее, чем {{ a.pct.multi }}% замеров{% else %}первый замер на сайте{% endif %}</p>
+  </div>
+  <div class="metric">
+    <p class="m-k">FPS в сцене</p>
+    <p class="m-v">{{ r.fps|ru }}</p>
+    <p class="m-s">{{ p.fps.objects|ru }} объектов, 1 поток{% if a.pct.fps is not None %} · лучше {{ a.pct.fps }}%{% endif %}</p>
+  </div>
+  <div class="metric">
+    <p class="m-k">Частота <small>оценка</small></p>
+    <p class="m-v">{{ r.freq|ghz }}<small> ГГц</small></p>
+    <p class="m-s">все ядра — {{ r.freq_all|ghz }} ГГц{% if p.freq.hot %}, после нагрева — {{ p.freq.hot|ghz }}{% endif %}</p>
+  </div>
+  <div class="metric">
+    <p class="m-k">Нагрев</p>
+    <p class="m-v">{{ r.drop|neg|signed }}<small>%</small></p>
+    <p class="m-s">изменение скорости за {{ p.marathon.seconds }} с полной нагрузки</p>
+  </div>
+  <div class="metric">
+    <p class="m-k">Эффективность</p>
+    <p class="m-v">{% if a.eff %}{{ a.eff|ru }}{% else %}—{% endif %}</p>
+    <p class="m-s">{% if a.eff %}очков на ватт (TDP {{ ps.tdp_text }}){% else %}нет паспортного TDP{% endif %}</p>
+  </div>
+</section>
+
+<section class="panel health" data-level="{{ a.health.level }}" aria-labelledby="health-h">
+  <p class="eyebrow">Не ослаб ли процессор?</p>
+  <h2 id="health-h">{{ a.health.title }}</h2>
+  <ul class="checks">
+    {% for c in a.health.checks %}
+    <li data-level="{{ c.level }}"><b>{{ c.title }}</b><span>{{ c.text }}</span></li>
+    {% endfor %}
+  </ul>
+  <p class="src">Сам кристалл процессора за годы почти не изнашивается. Слабеют охлаждение (пыль, высохшая термопаста) и настройки питания — это и проверяют пункты выше.</p>
+</section>
+
+<section class="panel" aria-labelledby="tests-h">
+  <div class="sec-head">
+    <h2 id="tests-h">В чём силён</h2>
+    <p>
+      {% if a.strong %}Сильнее всего: <b>{% for t in a.strong %}{{ t.title|lower }}{% if not forloop.last %}, {% endif %}{% endfor %}</b>.{% endif %}
+      {% if a.weak %} Слабее всего: <b>{% for t in a.weak %}{{ t.title|lower }}{% endfor %}</b>.{% endif %}
+      {% if a.speedup %} Все ядра быстрее одного в <b>{{ a.speedup|ru:1 }} раза</b>{% if a.smt is not None %}, вторые потоки ядер (Hyper-Threading / SMT) добавили <b>{{ a.smt|pct_of:1 }}%</b>{% endif %}.{% endif %}
+    </p>
+  </div>
+  <table class="tests wide">
+    <thead><tr><th>Тест</th><th class="what">Что проверяет</th><th class="num">1 ядро</th><th class="bar-col" aria-hidden="true"></th><th class="num">Все ядра</th><th class="bar-col" aria-hidden="true"></th><th class="num x-col">×</th></tr></thead>
+    <tbody>
+    {% for t in a.tests %}
+      <tr{% if t.tag %} class="{{ t.tag }}"{% endif %}>
+        <td><code>{{ t.code }}</code> {{ t.title }}{% if t.tag == "strong" %} <em class="tag">сильная сторона</em>{% elif t.tag == "weak" %} <em class="tag">слабее</em>{% endif %}</td>
+        <td class="what">{{ t.what }}</td>
+        <td class="num">{{ t.s.score|ru }}</td>
+        <td class="bar-col"><span class="hbar" style="--w: {{ t.sw }}%"></span></td>
+        <td class="num">{{ t.m.score|ru }}</td>
+        <td class="bar-col"><span class="hbar m" style="--w: {{ t.mw }}%"></span></td>
+        <td class="num x-col">×{{ t.m.speedup|ru:1 }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="src">Очки: 1000 = одно ядро AMD Ryzen 7 6800H в Edge. «Сильная сторона» — тест, где процессор выше своего среднего уровня.</p>
+</section>
+
+<section class="charts">
+  <div class="panel">
+    <h3>Масштабирование <small>во сколько раз быстрее на N потоках</small></h3>
+    <canvas id="c-scale" height="220"></canvas>
+  </div>
+  <div class="panel">
+    <h3>Марафон <small>скорость каждую секунду, все потоки</small></h3>
+    <canvas id="c-mar" height="220"></canvas>
+  </div>
+</section>
+
+<section class="two">
+  <div class="panel">
+    <h3>Условия замера</h3>
+    <dl class="kv">
+      <div><dt>Браузер</dt><dd>{{ p.system.browser|default:"—" }} {% if p.system.os %}· {{ p.system.os }}{% endif %}</dd></div>
+      <div><dt>Графика</dt><dd class="clip" title="{{ p.system.gpu }}">{{ p.system.gpu|default:"—" }}</dd></div>
+      <div><dt>Потоков</dt><dd>{{ p.system.threads }}{% if p.system.cores_est %} (ядер — оценка){% endif %}</dd></div>
+      <div><dt>Питание</dt><dd>{% if p.system.power.battery %}{% if p.system.power.plugged %}от сети{% else %}от батареи{% endif %}{% if p.system.power.percent is not None %} · {{ p.system.power.percent }}%{% endif %}{% else %}неизвестно{% endif %}</dd></div>
+      <div><dt>Длительность</dt><dd>{{ p.duration|ru }} с</dd></div>
+    </dl>
+  </div>
+  <div class="panel">
+    <h3>Прошлые замеры этого компьютера</h3>
+    {% if a.history %}
+    <ul class="history">
+      {% for h in a.history %}
+      <li><a href="{% url 'detail' h.id %}">{{ h.created|date:"j E Y" }}</a><span>{{ h.single|ru }} · {{ h.multi|ru }}</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">Это первый замер с этого браузера. Проверьте ещё раз через месяц — увидите, не стал ли процессор слабее.</p>
+    {% endif %}
+  </div>
+</section>
+
+<div class="actions">
+  <a class="btn-go" href="{% url 'home' %}">Проверить ещё раз</a>
+  <button class="btn-ghost" type="button" id="copy">Скопировать ссылку</button>
+</div>
+{% endwith %}
+{{ a.chart|json_script:"chart" }}
+{% endblock %}
+{% block scripts %}
+<script src="{% static 'bench/js/charts.js' %}?v={{ V }}"></script>
+<script>
+(() => {
+  const d = JSON.parse(document.getElementById("chart").textContent);
+  const s = [{ name: "", vendor: "signal", cores: d.cores, scaling: d.scaling, marathon: d.marathon }];
+  const draw = () => { Charts.scaling(document.getElementById("c-scale"), s); Charts.marathon(document.getElementById("c-mar"), s); };
+  draw();
+  let t; window.addEventListener("resize", () => { clearTimeout(t); t = setTimeout(draw, 150); });
+  if (document.fonts) document.fonts.ready.then(draw);
+  const b = document.getElementById("copy");
+  b.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(location.href); b.textContent = "Ссылка скопирована"; }
+    catch (e) { b.textContent = location.href; }
+  });
+})();
+</script>
+{% endblock %}

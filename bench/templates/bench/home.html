@@ -1,0 +1,119 @@
+{% extends "bench/base.html" %}
+{% load static bench_extras %}
+{% block content %}
+<section class="hero">
+  <div class="hero-text">
+    <h1>Насколько силён ваш процессор?</h1>
+    <p class="lead">Тест идёт прямо в браузере около минуты: очки на одном и на всех ядрах, частота, FPS в игровой сцене,
+      нагрев под нагрузкой. Результат попадёт в <a href="{% url 'top' %}">общий топ</a>.</p>
+    {% if stats.runs %}<p class="count"><b>{{ stats.runs|ru }}</b> замеров · <b>{{ stats.cpus|ru }}</b> процессоров на сайте</p>{% endif %}
+  </div>
+
+  <div class="ihs-wrap">
+    <div class="ihs" id="chip" data-vendor="other" aria-live="polite">
+      <span class="pin1" aria-hidden="true"></span>
+      <div class="etch">
+        <span class="etch-brand" id="chip-brand">CPU</span>
+        <span class="etch-model" id="chip-model">процессор не выбран</span>
+        <span class="etch-sub" id="chip-sub">&nbsp;</span>
+      </div>
+      <div class="die" id="threads" aria-label="Потоки процессора"></div>
+    </div>
+  </div>
+</section>
+
+<section class="panel setup" aria-labelledby="setup-h">
+  <h2 id="setup-h" class="sr-only">Ваш компьютер</h2>
+  <dl class="detect">
+    <div><dt>Потоков</dt><dd id="det-threads">—</dd></div>
+    <div><dt>Графика</dt><dd id="det-gpu">—</dd></div>
+    <div><dt>Система</dt><dd id="det-os">—</dd></div>
+    <div><dt>Питание</dt><dd id="det-power">—</dd></div>
+  </dl>
+
+  <div class="pick">
+    <p class="pick-title" id="cand-title">Похоже, у вас:</p>
+    <div class="cands" id="cands" role="radiogroup" aria-labelledby="cand-title"></div>
+    <div class="search">
+      <label for="search">Другой процессор</label>
+      <input id="search" type="search" autocomplete="off" spellcheck="false" placeholder="Например: i5-12400 или Ryzen 5 5600">
+      <ul class="search-list" id="search-list" hidden></ul>
+    </div>
+    <p class="hint" id="cpu-hint"></p>
+  </div>
+
+  <div class="go-row">
+    <label class="name">
+      <span>Имя в топе</span>
+      <input id="name" maxlength="40" autocomplete="nickname" placeholder="Аноним">
+    </label>
+    <button class="btn-go" id="go" type="button" disabled>Запустить тест</button>
+  </div>
+  <p class="note warn" id="power-warn" hidden>Ноутбук работает от батареи — процессор будет ограничен. Подключите зарядку.</p>
+  <p class="note small">Закройте тяжёлые программы и не сворачивайте вкладку, пока идёт тест.</p>
+</section>
+
+<section class="panel live" id="live" hidden aria-live="polite">
+  <div class="live-head">
+    <div>
+      <p class="stage" id="stage">—</p>
+      <p class="current" id="current"></p>
+    </div>
+    <button class="btn-ghost" id="stop" type="button" hidden>Остановить</button>
+  </div>
+  <ol class="steps" id="steps">
+    <li>Частота</li><li>Одно ядро</li><li>Все ядра</li><li>Игровая сцена</li><li>Масштабирование</li><li>Марафон</li>
+  </ol>
+  <div class="bar"><i id="bar"></i><span id="pct">0%</span></div>
+
+  <div class="live-grid">
+    <div class="live-block">
+      <h3>Тесты <small>очки · 1000 = одно ядро Ryzen 7 6800H</small></h3>
+      <table class="tests" id="tests">
+        <thead><tr><th>Тест</th><th class="num">1 ядро</th><th class="num">Все</th><th class="num">×</th></tr></thead>
+        <tbody>
+        {% for t in cfg.tests %}
+          <tr id="row-{{ t.key }}"><td><code>{{ t.code }}</code> {{ t.title }}</td><td class="num s">—</td><td class="num m">—</td><td class="num x">—</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <dl class="freqs">
+        <div><dt>Частота 1 ядра</dt><dd><span id="freq-1">—</span> ГГц</dd></div>
+        <div><dt>Все ядра</dt><dd><span id="freq-all">—</span> ГГц</dd></div>
+        <div><dt>После нагрева</dt><dd><span id="freq-hot">—</span> ГГц</dd></div>
+      </dl>
+    </div>
+    <div class="live-block">
+      <h3>Игровая сцена <small>стая из {{ cfg.fps_objects|ru }} объектов</small></h3>
+      <div class="fps-box" id="fps-box">
+        <canvas id="fps-canvas" aria-label="Предпросмотр игровой сцены"></canvas>
+        <p class="fps-read"><b id="fps-val">—</b> кадров/с</p>
+      </div>
+    </div>
+    <div class="live-block">
+      <h3>Масштабирование <small>во сколько раз быстрее на N потоках</small></h3>
+      <canvas id="c-scale" height="200"></canvas>
+    </div>
+    <div class="live-block">
+      <h3>Марафон <small>скорость каждую секунду</small></h3>
+      <canvas id="c-mar" height="200"></canvas>
+    </div>
+  </div>
+</section>
+
+<section class="panel done" id="done" hidden>
+  <p class="done-k">Готово</p>
+  <div class="done-nums">
+    <p><b id="d-single">—</b><span>одно ядро</span></p>
+    <p><b id="d-multi">—</b><span>все ядра</span></p>
+  </div>
+  <a class="btn-go" id="d-open" href="#">Открыть результат</a>
+</section>
+
+<p class="note bad" id="error" hidden></p>
+{{ cfg|json_script:"cfg" }}
+{% endblock %}
+{% block scripts %}
+<script src="{% static 'bench/js/charts.js' %}?v={{ V }}"></script>
+<script src="{% static 'bench/js/bench.js' %}?v={{ V }}"></script>
+{% endblock %}

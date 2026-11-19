@@ -1,0 +1,34 @@
+{% load static %}<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#06080c">
+<title>{% block title %}Народный бенчмарк{% endblock %}</title>
+<meta name="description" content="{% block description %}Проверьте процессор прямо в браузере: очки на одном и всех ядрах, частота, FPS, нагрев — и место в общем топе.{% endblock %}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@400;600&family=Onest:wght@400;500;600&family=Unbounded:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'bench/css/bench.css' %}?v={{ V }}">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='3' y='3' width='26' height='26' rx='3' fill='%230c1118' stroke='%23b8954a' stroke-width='1.5'/><rect x='9' y='9' width='14' height='14' rx='1.5' fill='%234d8dff'/></svg>">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="{% url 'home' %}">
+    <svg viewBox="0 0 28 28" aria-hidden="true"><rect x="2" y="2" width="24" height="24" rx="3" fill="#0c1118" stroke="#2a3445"/><g fill="#b8954a"><rect x="6" y="0.5" width="1.6" height="2.6"/><rect x="10.4" y="0.5" width="1.6" height="2.6"/><rect x="15.9" y="0.5" width="1.6" height="2.6"/><rect x="20.4" y="0.5" width="1.6" height="2.6"/><rect x="6" y="24.9" width="1.6" height="2.6"/><rect x="10.4" y="24.9" width="1.6" height="2.6"/><rect x="15.9" y="24.9" width="1.6" height="2.6"/><rect x="20.4" y="24.9" width="1.6" height="2.6"/></g><rect x="8" y="8" width="12" height="12" rx="1.5" fill="#4d8dff"/></svg>
+    <span>Народный<br>бенчмарк</span>
+  </a>
+  <nav aria-label="Разделы">
+    <a href="{% url 'home' %}"{% if nav == 'home' %} aria-current="page"{% endif %}>Тест</a>
+    <a href="{% url 'top' %}"{% if nav == 'top' %} aria-current="page"{% endif %}>Топ</a>
+  </nav>
+</header>
+<main>{% block content %}{% endblock %}</main>
+<footer class="foot">
+  <p>Тесты выполняются в вашем браузере, на вашем процессоре. Сайт хранит только результаты: имя, которое вы ввели, модель и очки.</p>
+  <p>Учебный проект. Паспортные данные — из справочника и могут быть неточными; частота — оценка.</p>
+</footer>
+{% block scripts %}{% endblock %}
+</body>
+</html>

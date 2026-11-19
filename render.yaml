@@ -1,0 +1,18 @@
+# Render Blueprint: New → Blueprint → выбрать этот репозиторий на GitHub.
+# База — бесплатный Postgres на neon.tech: адрес подключения вставить в DATABASE_URL.
+services:
+  - type: web
+    name: narod-bench
+    runtime: python
+    plan: free
+    buildCommand: bash build.sh
+    startCommand: gunicorn narod.wsgi:application --workers 1 --threads 4 --timeout 60
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: WEB_CONCURRENCY
+        value: 1
