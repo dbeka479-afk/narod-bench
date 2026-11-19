@@ -61,10 +61,7 @@ def _cpu(s):
     if known:
         return known["key"], known["name"], known["vendor"]
     name = _s(s.get("cpu"), 120) or "Неизвестный процессор"
-    low = name.lower()
-    vendor = "intel" if "intel" in low else "amd" if ("amd" in low or "ryzen" in low) else \
-        "apple" if "apple" in low else "other"
-    return "", name, vendor
+    return "", name, cpus.vendor_of_text(name)
 
 
 def clean(p):

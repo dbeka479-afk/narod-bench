@@ -29,12 +29,23 @@ def fake(name="Друг", cpu_key="amd-ryzen-7-6800h", cpu="AMD Ryzen 7 6800H", 
 
 class CatalogTests(TestCase):
     def test_catalog_is_consistent(self):
-        self.assertGreater(len(cpus.CATALOG), 150)
+        self.assertGreater(len(cpus.CATALOG), 300)
         for c in cpus.CATALOG.values():
-            self.assertIn(c["vendor"], ("intel", "amd", "apple"), c["name"])
+            self.assertIn(c["vendor"], cpus.VENDORS, c["name"])
             self.assertGreaterEqual(c["threads"], c["cores"], c["name"])
             if c["base"] and c["boost"]:
                 self.assertLessEqual(c["base"], c["boost"], c["name"])
+            # у телефонного чипа должна быть графика (по ней он угадывается), у компьютерного — нет поля графики телефона
+            self.assertEqual(bool(c["gpu"]), c["seg"] == "p", c["name"])
+
+    def test_phones_are_in_catalog(self):
+        """Телефонные чипы: Snapdragon, MediaTek, Exynos, Tensor, Apple A — отдельный вид «телефон / планшет»."""
+        for key in ("qualcomm-snapdragon-8-gen-3", "qualcomm-snapdragon-8-plus-gen-1", "qualcomm-snapdragon-680",
+                    "mediatek-helio-g99", "mediatek-dimensity-6100-plus", "samsung-exynos-1380", "google-tensor-g2",
+                    "apple-a15-bionic", "unisoc-t606"):
+            self.assertEqual(cpus.get(key)["seg"], "p", key)
+        self.assertEqual(cpus.get("qualcomm-snapdragon-8-gen-1")["name"], "Qualcomm Snapdragon 8 Gen 1")
+        self.assertEqual(cpus.get("qualcomm-snapdragon-8-plus-gen-1")["name"], "Qualcomm Snapdragon 8+ Gen 1")
 
     def test_match_free_text(self):
         self.assertEqual(cpus.match("AMD Ryzen 7 6800H with Radeon Graphics")["key"], "amd-ryzen-7-6800h")
@@ -42,13 +53,48 @@ class CatalogTests(TestCase):
         self.assertEqual(cpus.match("Intel(R) Core(TM) i7-12700 CPU")["key"], "intel-core-i7-12700")
         self.assertEqual(cpus.match("Ryzen 5 5600X")["key"], "amd-ryzen-5-5600x")
         self.assertEqual(cpus.match("Apple M2 Pro")["key"], "apple-m2-pro")
-        self.assertIsNone(cpus.match("Snapdragon 8 Gen 3"))
+        self.assertEqual(cpus.match("Snapdragon 8 Gen 3")["key"], "qualcomm-snapdragon-8-gen-3")
+        self.assertEqual(cpus.match("snapdragon 8+ gen 1")["key"], "qualcomm-snapdragon-8-plus-gen-1")
+        self.assertEqual(cpus.match("Helio G99")["key"], "mediatek-helio-g99")
+        self.assertEqual(cpus.match("Dimensity 6100+")["key"], "mediatek-dimensity-6100-plus")
+        self.assertEqual(cpus.match("Exynos 1380")["key"], "samsung-exynos-1380")
+        self.assertEqual(cpus.match("i5-12600KF")["key"], "intel-core-i5-12600kf")
+        self.assertIsNone(cpus.match("Эльбрус-8СВ"))
 
-    def test_gpu_rules_are_valid_regexes(self):
+    def test_gpu_rules_are_valid_and_used(self):
+        """Правила графики — регулярные выражения, понятные и Python, и JavaScript (без (?<…) и (?P…)),
+        и каждое семейство встречается хотя бы у одного процессора справочника."""
         import re
-        for pattern, fams in cpus.GPU_RULES:
+        fams = {f for c in cpus.CATALOG.values() for f in c["fam"]}
+        for pattern, fs in cpus.GPU_RULES:
             re.compile(pattern, re.I)
-            self.assertTrue(fams)
+            self.assertNotIn("(?<", pattern)
+            self.assertNotIn("(?P", pattern)
+            for f in fs.split():
+                self.assertIn(f, fams, pattern)
+
+    def test_gpu_rules_by_device_id(self):
+        import re
+
+        def fam(renderer):  # как в браузере: первое подходящее правило
+            return next((fs for pattern, fs in cpus.GPU_RULES if re.search(pattern, renderer, re.I)), None)
+        self.assertEqual(fam("ANGLE (Intel, Intel(R) HD Graphics 4600 (0x00000412) Direct3D11)"), "hsw-s")
+        self.assertEqual(fam("ANGLE (Intel, Intel(R) HD Graphics 630 (0x00005912) Direct3D11)"), "kbl-s")
+        self.assertEqual(fam("ANGLE (Intel, Intel(R) HD Graphics 620 (0x00005916) Direct3D11)"), "kbl-u")
+        self.assertEqual(fam("ANGLE (Intel, Intel(R) UHD Graphics 620 (0x00005917) Direct3D11)"), "kbl-r")
+        self.assertEqual(fam("Intel(R) HD Graphics 530"), "skl-s skl-h")
+        self.assertEqual(fam("Intel(R) UHD Graphics 630"), "cfl-s cfl-h cml-s cml-h")  # не путается со старой HD 630
+        self.assertEqual(fam("ANGLE (Qualcomm, Qualcomm(R) Adreno(TM) X1-85 GPU Direct3D11)"), "x1")
+
+    def test_model_rules_point_to_catalog(self):
+        import re
+        for pattern, keys in cpus.MODEL_RULES:
+            re.compile(pattern, re.I)
+            self.assertNotIn("(?<", pattern)
+            for k in keys.split():
+                self.assertEqual(cpus.get(k)["seg"], "p", (pattern, k))
+        for k in cpus.POPULAR:
+            self.assertIsNotNone(cpus.get(k), k)
 
 
 class PayloadTests(TestCase):
@@ -71,10 +117,16 @@ class PayloadTests(TestCase):
         self.assertEqual(c["system"]["vendor"], "amd")
 
     def test_unknown_cpu_is_kept_as_typed(self):
-        c = clean(fake(cpu_key="", cpu="Snapdragon X Elite"))
-        self.assertEqual((c["system"]["cpu_key"], c["system"]["cpu"], c["system"]["vendor"]), ("", "Snapdragon X Elite", "other"))
+        c = clean(fake(cpu_key="", cpu="Эльбрус-8СВ"))
+        self.assertEqual((c["system"]["cpu_key"], c["system"]["cpu"], c["system"]["vendor"]), ("", "Эльбрус-8СВ", "other"))
+        c = clean(fake(cpu_key="", cpu="Dimensity 9500"))  # нет в справочнике, но фирма понятна
+        self.assertEqual((c["system"]["cpu_key"], c["system"]["vendor"]), ("", "mediatek"))
         c = clean(fake(cpu_key="", cpu="ryzen 5 5600x"))  # вписанный от руки, но есть в справочнике
         self.assertEqual(c["system"]["cpu_key"], "amd-ryzen-5-5600x")
+
+    def test_phone_result(self):
+        c = clean(fake(cpu_key="qualcomm-snapdragon-680", cpu="", threads=8))
+        self.assertEqual((c["system"]["cpu"], c["system"]["vendor"]), ("Qualcomm Snapdragon 680", "qualcomm"))
 
     def test_rejects_garbage(self):
         for bad in ({}, {"format": "narod-bench/2"}, dict(fake(), single={})):
@@ -181,9 +233,17 @@ class PageTests(TestCase):
             self.assertEqual(self.client.get(url).status_code, 200, url)
 
     def test_unknown_cpu_result_page(self):
-        r = self.save(fake("X", cpu_key="", cpu="Snapdragon X Elite", threads=12))
+        r = self.save(fake("X", cpu_key="", cpu="Эльбрус-8СВ", threads=8))
         page = self.client.get(r.json()["url"])
         self.assertContains(page, "нет в справочнике")
+
+    def test_phone_result_page_and_top(self):
+        r = self.save(fake("Тел", cpu_key="mediatek-helio-g99", cpu="MediaTek Helio G99", threads=8))
+        page = self.client.get(r.json()["url"])
+        self.assertContains(page, "MediaTek Helio G99")
+        self.assertContains(page, "телефон / планшет")
+        top = self.client.get("/top/")
+        self.assertContains(top, 'data-vendor="mediatek">MediaTek</span> Helio G99')
 
     def test_save_bad_request(self):
         r = self.client.post("/api/save/", "не json", content_type="application/json")
@@ -219,6 +279,16 @@ class PageTests(TestCase):
         start = html[html.index('id="start"'):html.index('id="run"')]
         for word in ("Потоков", "Графика", "Система", "Память"):
             self.assertNotIn(word, start)
+
+    def test_home_asks_permission_before_load(self):
+        """Перед нагрузкой — вопрос с кнопками «Разрешить и начать» / «Не сейчас»; ход теста скрыт до разрешения."""
+        html = self.client.get("/").content.decode()
+        self.assertRegex(html, r'<section class="panel consent" id="consent" hidden')
+        self.assertIn('id="allow"', html)
+        self.assertIn('id="deny"', html)
+        self.assertRegex(html, r'<section class="panel live" id="live" hidden')
+        self.assertIn("bench/js/guess.js", html)
+        self.assertIn('"model_rules"', html)
 
     def test_result_page_shows_ram(self):
         p = fake()

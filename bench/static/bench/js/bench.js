@@ -1,18 +1,24 @@
-/* Страница теста. Тесты выполняются в Web Workers — на процессоре ТОГО компьютера, где открыта
+/* Страница теста. Тесты выполняются в Web Workers — на процессоре ТОГО устройства, где открыта
    страница. Сервер только хранит результаты и собирает общий топ.
 
-   До нажатия «Начать» страница пустая и ничего о компьютере не узнаёт. После нажатия сайт сам определяет,
-   что может: потоки, графику, систему, примерный объём памяти. Модель процессора браузер не сообщает
-   ни с каким разрешением — сайт угадывает её по числу потоков и встроенной графике (название видно через
-   WebGL) и сразу пишет. Если угадал неверно, человек поправляет через «не тот?», пока идёт тест.
-   В топ результат попадает только по кнопке «Сохранить в топ» в конце. */
+   До нажатия «Начать» страница пустая и ничего об устройстве не узнаёт. После нажатия сайт определяет,
+   что может (устройство, процессор, графику, систему, память), показывает это и СПРАШИВАЕТ РАЗРЕШЕНИЯ:
+   процессор начинает нагружаться только после кнопки «Разрешить и начать». Модель процессора браузер
+   не сообщает — её угадывает guess.js по косвенным признакам; если угадал неверно, человек поправляет
+   через «не тот?». В топ результат попадает только по кнопке «Сохранить в топ» в конце. */
 (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
   const CFG = JSON.parse($("cfg").textContent);
+  const GCFG = Guess.prepare(CFG);
   const TESTS = CFG.tests;
   const fmt = (n, d = 0) => Number(n).toLocaleString("ru-RU", { minimumFractionDigits: d, maximumFractionDigits: d });
   const ghz = (x) => (x ? fmt(x, 2).replace(/0$/, "").replace(/,$/, "") : "—");
+  const plural = (n, [one, few, many]) => {
+    const a = Math.abs(n) % 100, b = a % 10;
+    return `${n} ${a > 10 && a < 20 ? many : b === 1 ? one : b >= 2 && b <= 4 ? few : many}`;
+  };
+  const CORES = ["ядро", "ядра", "ядер"], THR = ["поток", "потока", "потоков"];
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* приватный режим — не страшно */ } },
@@ -26,11 +32,12 @@
   const T = { warm: 250, single: 1500, multi: 1500, scale: 1000, marathon: 20, freq: 1200, fps: 3000, fpsWarm: 400 };
   const params = new URLSearchParams(location.search);
 
-  // ---------- что браузер знает о компьютере ----------
+  // ---------- что браузер знает об устройстве ----------
   function browserInfo() {
     const ua = navigator.userAgent;
     const list = [[/Edg\/(\d+)/, "Edge", "V8"], [/OPR\/(\d+)/, "Opera", "V8"], [/YaBrowser\/(\d+)/, "Яндекс Браузер", "V8"],
-      [/Firefox\/(\d+)/, "Firefox", "SpiderMonkey"], [/Chrome\/(\d+)/, "Chrome", "V8"], [/Version\/(\d+).*Safari/, "Safari", "JavaScriptCore"]];
+      [/SamsungBrowser\/(\d+)/, "Samsung Internet", "V8"], [/Firefox\/(\d+)/, "Firefox", "SpiderMonkey"],
+      [/Chrome\/(\d+)/, "Chrome", "V8"], [/Version\/(\d+).*Safari/, "Safari", "JavaScriptCore"]];
     for (const [re, name, engine] of list) {
       const m = ua.match(re);
       if (m) return { browser: `${name} ${m[1]}`, engine };
@@ -39,22 +46,35 @@
   }
   function osName() {
     const ua = navigator.userAgent;
-    return /Windows/.test(ua) ? "Windows" : /Android/.test(ua) ? "Android" : /iPhone|iPad/.test(ua) ? "iOS"
+    return /Windows/.test(ua) ? "Windows" : /Android/.test(ua) ? "Android" : /iPhone|iPad|iPod/.test(ua) ? "iOS"
       : /Mac OS X/.test(ua) ? "macOS" : /CrOS/.test(ua) ? "ChromeOS" : /Linux/.test(ua) ? "Linux" : "";
   }
-  // Windows 10 и 11 в строке браузера одинаковые; Chrome и Edge отдают номер версии платформы отдельно (13+ — это 11).
-  async function osFull() {
-    const base = osName();
+  // Подсказки Chrome и Edge: версия Windows, модель телефона, архитектура (ARM — ноутбуки на Snapdragon X).
+  async function uaHints() {
     try {
       const d = navigator.userAgentData;
-      if (base === "Windows" && d && d.getHighEntropyValues) {
-        const v = await d.getHighEntropyValues(["platformVersion"]);
-        const major = parseInt(String(v.platformVersion || "").split(".")[0], 10);
-        if (major >= 13) return "Windows 11";
-        if (major >= 1) return "Windows 10";
-      }
-    } catch (e) { /* браузер не сообщает — оставим просто «Windows» */ }
+      if (d && d.getHighEntropyValues) return await d.getHighEntropyValues(["platformVersion", "model", "architecture"]);
+    } catch (e) { /* браузер не сообщает */ }
+    return {};
+  }
+  // Windows 10 и 11 в строке браузера одинаковые; Chrome и Edge отдают номер версии платформы отдельно (13+ — это 11).
+  function osFull(base, h) {
+    if (base === "Windows") {
+      const major = parseInt(String(h.platformVersion || "").split(".")[0], 10);
+      if (major >= 13) return "Windows 11";
+      if (major >= 1) return "Windows 10";
+    }
     return base;
+  }
+  // Модель телефона: Chrome сообщает её отдельно, Samsung Internet и Яндекс Браузер — прямо в строке браузера.
+  function phoneModel(h) {
+    let m = String(h.model || "").trim();
+    if (!m) {
+      const x = navigator.userAgent.match(/Android [\d.]+; ([^;)]+?)(?:;|\)| Build\/)/);
+      m = x ? x[1].trim() : "";
+    }
+    m = m.replace(/^SAMSUNG\s+/i, "");
+    return m === "K" || /^wv$/i.test(m) ? "" : m.slice(0, 40); // «K» — Chrome скрыл модель
   }
   function gpuName() {
     try {
@@ -74,92 +94,51 @@
       return { battery: true, plugged: !!b.charging, percent: Math.round(b.level * 100) };
     } catch (e) { return { battery: null, plugged: null, percent: null }; }
   }
-  const shortGpu = (g) => g.replace(/^ANGLE \(([^,]+),\s*/, "").replace(/\s*\(0x[0-9a-f]+\)/i, "").replace(/\s*(Direct3D|OpenGL|Metal|vs_|, D3D).*$/i, "")
-    .replace(/\(R\)|\(TM\)/g, "").replace(/\s+/g, " ").trim() || "не видна";
+  const shortGpu = (g) => g.replace(/^ANGLE \(([^,]+),\s*/, "").replace(/\s*\(0x[0-9a-f]+\)/i, "").replace(/\s*(Direct3D|OpenGL|Metal|Vulkan|vs_|, D3D).*$/i, "")
+    .replace(/\(R\)|\(TM\)/g, "").replace(/[,\s]+$/, "").replace(/\s+/g, " ").trim() || "не видна";
 
   // Заполняется только после нажатия «Начать».
-  let SYS = null; // { br, os, gpu, ram }
-  let G = { list: [], gpu: { discrete: false } };
-
-  // ---------- угадывание процессора ----------
-  const RULES = CFG.gpu_rules.map(([re, fams]) => [new RegExp(re, "i"), fams.split(" ")]);
-  function analyzeGpu(g) {
-    const discrete = /NVIDIA|GeForce|Quadro|\bRTX\b|\bGTX\b|Radeon\s?(\(TM\)\s?)?(RX|Pro)\b|Arc\(TM\) A\d|Arc A\d/i.test(g);
-    const apple = g.match(/Apple M(\d+)\s*(Pro|Max|Ultra)?/i);
-    let vendor = null;
-    if (/Apple/i.test(g)) vendor = "apple";
-    else if (!discrete && /Intel/i.test(g)) vendor = "intel";
-    else if (!discrete && /AMD|Radeon/i.test(g)) vendor = "amd";
-    const fams = new Set();
-    if (apple) fams.add("m" + apple[1] + (apple[2] ? apple[2].toLowerCase() : ""));
-    else if (!discrete) {
-      for (const [re, f] of RULES) if (re.test(g)) { f.forEach((x) => fams.add(x)); break; }
-    }
-    // Если браузер видит только дискретную видеокарту, процессор по ней не узнать, но можно сузить круг:
-    // «Laptop GPU» — игровой ноутбук (обычно процессор серии H), поколение видеокарты — примерные годы.
-    let laptop = null, era = null;
-    if (discrete) {
-      laptop = /Laptop|Max-Q|Mobile|RX\s?\d{4}M\b/i.test(g);
-      const nv = g.match(/(?:RTX|GTX)\s?(\d{2})(\d{2})/i), rx = g.match(/RX\s?(\d)\d{3}/i);
-      if (nv) era = { 50: 2025, 40: 2023, 30: 2021, 20: 2019, 16: 2019, 10: 2017 }[nv[1]] || null;
-      else if (rx) era = { 9: 2025, 7: 2023, 6: 2021, 5: 2019 }[rx[1]] || null;
-    }
-    return { vendor, fams, discrete, laptop, era };
-  }
-  function guess(gpu, os) {
-    const g = analyzeGpu(gpu);
-    const mac = os === "macOS";
-    const out = [];
-    for (const c of CFG.catalog) {
-      if (c.threads !== THREADS) continue;
-      if (c.vendor === "apple" && !mac) continue;
-      if (mac && c.vendor !== "apple" && g.vendor !== "intel") continue;
-      let s = 40;
-      if (g.vendor) {
-        if (c.vendor !== g.vendor) continue;
-        s += 15;
-        if (!g.discrete && c.fam.length === 0) continue; // встроенная графика есть, а у этой модели её нет
-      }
-      if (g.fams.size) s += c.fam.some((f) => g.fams.has(f)) ? 50 : -25;
-      if (g.laptop !== null) {
-        s += g.laptop === (c.seg === "l") ? 10 : -20;
-        if (g.laptop && c.tdp && c.tdp < 35) s -= 10; // в игровых ноутбуках редко ставят экономичные U-серии
-      }
-      if (g.era) s += c.year >= g.era - 1 && c.year <= g.era + 2 ? 10 : -10;
-      s += (c.year - 2015) * 0.3; // при равенстве — новее выше
-      out.push({ c, s });
-    }
-    return { list: out.sort((a, b) => b.s - a.s).slice(0, 3), gpu: g };
-  }
-  const norm = (s) => s.toLowerCase().replace(/[^a-z0-9а-я]/g, "");
-  function search(q) {
-    const toks = q.toLowerCase().split(/\s+/).map(norm).filter(Boolean);
-    if (!toks.length) return [];
-    return CFG.catalog.filter((c) => { const n = norm(c.name); return toks.every((t) => n.includes(t)); })
-      .sort((a, b) => b.year - a.year).slice(0, 8);
-  }
+  let SYS = null; // { br, os, gpu, ram, model }
+  let G = { kind: "pc", list: [], conf: "low", vendor: null, why: "", gpu: { discrete: false } };
+  let POWER = null;
+  const mobileKind = () => G.kind === "phone" || G.kind === "tablet";
+  const KIND = { phone: "Телефон", tablet: "Планшет", laptop: "Ноутбук", desktop: "Настольный ПК", pc: "Компьютер", mac: "Mac" };
 
   // ---------- процессор: угаданный или исправленный ----------
-  const vendorName = (v) => ({ intel: "Intel", amd: "AMD", apple: "Apple" }[v] || "CPU");
-  const shortName = (n) => n.replace(/^(AMD|Intel|Apple)\s+/i, "");
+  const vendorName = (v) => Guess.VENDORS[v] || "CPU";
+  const shortName = (n) => n.replace(/^(AMD|Intel|Apple|Qualcomm|MediaTek|Samsung|Google|Unisoc|HiSilicon)\s+/i, "");
   const byKey = (k) => CFG.catalog.find((c) => c.key === k);
-  const estCores = () => (THREADS >= 4 && SYS && SYS.os !== "macOS" ? Math.round(THREADS / 2) : THREADS);
-  let chosen = null; // { key, name, vendor, cores, threads, boost, year, est, sure }
+  const vendorOfText = (n) => {
+    const l = n.toLowerCase();
+    return /intel|core i|pentium|celeron|xeon/.test(l) ? "intel" : /amd|ryzen|athlon/.test(l) ? "amd"
+      : /qualcomm|snapdragon/.test(l) ? "qualcomm" : /mediatek|dimensity|helio/.test(l) ? "mediatek"
+      : /exynos/.test(l) ? "samsung" : /tensor/.test(l) ? "google" : /unisoc/.test(l) ? "unisoc"
+      : /kirin|hisilicon/.test(l) ? "hisilicon" : /apple/.test(l) ? "apple" : "other";
+  };
+  // у телефонов и Mac нет «двух потоков на ядро», у остальных компьютеров обычно есть
+  const estCores = () => (THREADS >= 4 && G.kind !== "mac" && !mobileKind() ? Math.round(THREADS / 2) : THREADS);
+  // подходит ли процессор этому устройству: телефонный — телефону; у компьютера число потоков браузер знает точно
+  const fits = (c) => (c.seg === "p") === mobileKind() && (c.seg === "p" || c.threads === THREADS);
+  let chosen = null; // { key, name, vendor, cores, threads, boost, year, est, sure, why }
   let extra = null;  // выбранный через поиск, если его нет среди угаданных
 
-  function choose(c, how) {
-    // how: "auto" — угадал сайт, "sure" — угадал уверенно, "manual" — выбрал человек
+  function choose(c, how, why) {
+    // how: "sure" — признаки указывают на эту модель, "auto" — одна из похожих, "manual" — выбрал человек
     if (c.other) {
-      const v = /intel/i.test(c.name) ? "intel" : /amd|ryzen/i.test(c.name) ? "amd" : /apple/i.test(c.name) ? "apple" : "other";
-      chosen = { key: "", name: c.name, vendor: v, cores: estCores(), threads: null, est: true, sure: true };
+      chosen = { key: "", name: c.name, vendor: vendorOfText(c.name), cores: estCores(), threads: null, est: true, sure: true, why: "вписан вами" };
       store.set("nb.cpu", "other:" + c.name);
     } else {
       chosen = { key: c.key, name: c.name, vendor: c.vendor, cores: Math.min(c.cores, THREADS), threads: c.threads,
-        boost: c.boost, year: c.year, est: false, sure: how !== "auto" };
+        boost: c.boost, year: c.year, seg: c.seg, est: false, sure: how !== "auto",
+        why: why || (how === "manual" ? "выбран вами" : G.why) };
       if (how === "manual") store.set("nb.cpu", c.key);
       if (!G.list.some((x) => x.c.key === c.key)) extra = c;
     }
     paint();
+  }
+
+  function coresText(c) {
+    return c.cores === c.threads ? plural(c.cores, CORES) : `${plural(c.cores, CORES)} · ${plural(c.threads, THR)}`;
   }
 
   function renderCards() {
@@ -167,8 +146,8 @@
     box.textContent = "";
     const items = [];
     if (extra && !G.list.some((x) => x.c.key === extra.key)) items.push(extra);
-    G.list.forEach((x) => items.push(x.c));
-    $("cand-title").textContent = items.length ? "Похожие процессоры:" : "Угадать не получилось — найдите свой процессор:";
+    G.list.slice(0, chosen ? 3 : 6).forEach((x) => items.push(x.c));
+    $("cand-title").textContent = !items.length ? "Найдите свой процессор:" : chosen ? "Похожие процессоры:" : "Похоже на один из этих — выберите свой:";
     items.forEach((c) => {
       const b = document.createElement("button");
       b.type = "button";
@@ -176,9 +155,10 @@
       b.setAttribute("role", "radio");
       b.dataset.vendor = c.vendor;
       b.setAttribute("aria-checked", chosen && chosen.key === c.key ? "true" : "false");
-      b.innerHTML = `<span class="cand-v">${vendorName(c.vendor)}</span><span class="cand-n"></span>` +
-        `<span class="cand-s">${c.cores} ядер · ${c.threads} потоков · ${c.year}</span>`;
+      b.innerHTML = `<span class="cand-v"></span><span class="cand-n"></span><span class="cand-s"></span>`;
+      b.querySelector(".cand-v").textContent = vendorName(c.vendor);
       b.querySelector(".cand-n").textContent = shortName(c.name);
+      b.querySelector(".cand-s").textContent = [coresText(c), c.gpu && c.gpu !== "Apple GPU" ? c.gpu : "", c.year].filter(Boolean).join(" · ");
       b.addEventListener("click", () => { choose(c, "manual"); openPicker(false); });
       box.appendChild(b);
     });
@@ -192,40 +172,52 @@
     }
   }
 
+  function whereToLook() {
+    if (G.kind === "phone" || G.kind === "tablet") {
+      return SYS && SYS.os === "iOS" ? "Модель устройства: Настройки → Основные → Об этом устройстве."
+        : "Название процессора: Настройки → О телефоне → Все характеристики (или приложение CPU-Z).";
+    }
+    if (G.kind === "mac") return "Название чипа: меню Apple → Об этом Mac.";
+    return "Точное название: Диспетчер задач → Производительность → ЦП.";
+  }
+
   function paint() {
     const c = chosen;
-    $("cpu-card").dataset.vendor = c ? c.vendor : "other";
-    $("cpu-name").textContent = c ? c.name : "Не удалось определить";
+    // ноутбук или настольный — если по браузеру не понять, подсказывает найденный процессор
+    const kind = G.kind === "pc" && c && (c.seg === "d" || c.seg === "l") ? (c.seg === "d" ? "desktop" : "laptop") : G.kind;
+    if (SYS) $("det-kind").textContent = KIND[kind] + (SYS.model ? " · " + SYS.model : "");
+    $("cpu-card").dataset.vendor = c ? c.vendor : G.vendor || "other";
+    $("cpu-name").textContent = c ? c.name : G.vendor ? `Процессор ${Guess.FAMILY[G.vendor]}` : "Модель не видна браузеру";
     $("cpu-name").classList.toggle("unknown", !c);
     const sub = [];
-    if (c && !c.est) sub.push(`${c.cores} ядер · ${c.threads} потоков`, c.boost ? `до ${ghz(c.boost)} ГГц` : "", String(c.year));
+    if (c && !c.est) sub.push(coresText(c), c.boost ? `до ${ghz(c.boost)} ГГц` : "", String(c.year));
     if (c && c.est) sub.push("нет в справочнике");
-    if (c && !c.sure) sub.push("определён примерно");
-    if (!c) sub.push("Браузер не сообщает модель — найдите свой процессор ниже");
+    if (c) sub.push(c.sure ? (c.why ? (/^(выбран|вписан)/.test(c.why) ? c.why : "узнан " + c.why) : "") : "примерно" + (c.why ? ", " + c.why : ""));
+    if (!c) sub.push("Браузер не сообщает модель процессора — " + (G.list.length ? "выберите свой из похожих ниже" : "найдите свой ниже") + ", сайт запомнит");
     $("cpu-sub").textContent = sub.filter(Boolean).join(" · ");
     // ядра берутся из справочника — показываем их, только если в модели уверены; потоки браузер знает точно
-    $("det-cores").textContent = c && !c.est && c.sure ? `${c.cores} / ${THREADS}` : `${THREADS} потоков`;
+    $("det-cores").textContent = c && !c.est && c.sure ? `${c.cores} / ${THREADS}` : plural(THREADS, THR);
 
     const hint = $("cpu-hint");
     hint.classList.remove("bad");
-    if (c && c.threads && c.threads !== THREADS) {
-      hint.textContent = `Браузер видит ${THREADS} потоков, а у ${c.name} их ${c.threads}. Проверьте, тот ли процессор выбран.`;
+    if (c && c.threads && c.threads !== THREADS && c.seg !== "p") {
+      hint.textContent = `Браузер видит ${plural(THREADS, THR)}, а у ${c.name} их ${c.threads}. Проверьте, тот ли процессор выбран.`;
       hint.classList.add("bad");
-    } else if (G.gpu.discrete) {
-      hint.textContent = "Браузер видит только дискретную видеокарту — по ней модель процессора точно не узнать. " +
-        "Точное название написано в Диспетчере задач → Производительность → ЦП.";
+    } else if (!c && G.gpu.discrete) {
+      hint.textContent = "Браузеру видна только дискретная видеокарта — по ней модель процессора не узнать. " + whereToLook();
     } else {
-      hint.textContent = "Точное название написано в Диспетчере задач → Производительность → ЦП.";
+      hint.textContent = whereToLook();
     }
     $("save").disabled = !c || saving;
     $("save-hint").textContent = c ? "" : "Чтобы сохранить результат, укажите процессор: нажмите «не тот?» вверху страницы.";
+    $("fix").textContent = $("picker").hidden ? (c ? "не тот?" : "выбрать") : "скрыть";
     renderCards();
   }
 
   function openPicker(open) {
     $("picker").hidden = !open;
     $("fix").setAttribute("aria-expanded", open ? "true" : "false");
-    $("fix").textContent = open ? "скрыть" : "не тот?";
+    $("fix").textContent = open ? "скрыть" : chosen ? "не тот?" : "выбрать";
   }
   $("fix").addEventListener("click", () => {
     const open = $("picker").hidden;
@@ -233,8 +225,16 @@
     if (open) sIn.focus();
   });
 
-  // поиск по справочнику
+  // поиск по справочнику: сначала процессоры того же вида устройства (телефонные — для телефона)
   const sIn = $("search"), sList = $("search-list");
+  const norm = (s) => s.toLowerCase().replace(/\+/g, "plus").replace(/[^a-z0-9а-я]/g, "");
+  function search(q) {
+    const toks = q.toLowerCase().split(/\s+/).map(norm).filter(Boolean);
+    if (!toks.length) return [];
+    const same = (c) => ((c.seg === "p") === mobileKind() ? 1 : 0);
+    return CFG.catalog.filter((c) => { const n = norm(c.name); return toks.every((t) => n.includes(t)); })
+      .sort((a, b) => same(b) - same(a) || b.year - a.year).slice(0, 8);
+  }
   function renderSearch() {
     const q = sIn.value.trim();
     sList.textContent = "";
@@ -242,8 +242,11 @@
     const pick = (c) => { choose(c, "manual"); sIn.value = ""; sList.hidden = true; openPicker(false); };
     search(q).forEach((c) => {
       const li = document.createElement("li");
-      li.innerHTML = `<button type="button"><span class="cand-v" data-vendor="${c.vendor}">${vendorName(c.vendor)}</span> <b></b> <small>${c.cores}/${c.threads} · ${c.year}</small></button>`;
+      li.innerHTML = `<button type="button"><span class="cand-v"></span> <b></b> <small></small></button>`;
+      li.querySelector(".cand-v").dataset.vendor = c.vendor;
+      li.querySelector(".cand-v").textContent = vendorName(c.vendor);
       li.querySelector("b").textContent = shortName(c.name);
+      li.querySelector("small").textContent = `${c.cores}/${c.threads} · ${c.year}`;
       li.firstChild.addEventListener("click", () => pick(c));
       sList.appendChild(li);
     });
@@ -261,24 +264,75 @@
     if (e.key === "Escape") { sIn.value = ""; renderSearch(); }
   });
 
-  // ---------- определение компьютера: только после нажатия «Начать» ----------
+  // ---------- определение устройства: только после нажатия «Начать», без нагрузки ----------
   async function detect() {
     if (SYS) return;
-    SYS = { br: browserInfo(), os: await osFull(), gpu: gpuName(), ram: ramGb() };
-    G = guess(SYS.gpu, SYS.os);
-    $("det-gpu").textContent = shortGpu(SYS.gpu);
+    const [h, b] = await Promise.all([uaHints(), battery()]);
+    const os = osName();
+    SYS = { br: browserInfo(), os: osFull(os, h), gpu: gpuName(), ram: ramGb(), model: os === "Android" ? phoneModel(h) : "" };
+    POWER = b;
+    G = Guess.guess({
+      ua: navigator.userAgent, os, threads: THREADS, gpu: SYS.gpu, model: SYS.model, arch: String(h.architecture || ""),
+      mobile: navigator.userAgentData ? navigator.userAgentData.mobile : undefined, touch: navigator.maxTouchPoints || 0,
+      battery: b.battery ? { level: b.percent / 100, charging: b.plugged } : null,
+      screen: { w: screen.width, h: screen.height, dpr: window.devicePixelRatio || 1 },
+    }, GCFG);
+
+    const gpuShort = G.mg ? G.mg.label : shortGpu(SYS.gpu);
+    $("det-gpu").textContent = gpuShort;
     $("det-gpu").title = SYS.gpu;
     $("det-os").textContent = [SYS.os, SYS.br.browser].filter(Boolean).join(" · ");
+    $("det-os").title = $("det-os").textContent;
     $("det-ram").textContent = ramText(SYS.ram);
 
-    // Человек уже поправлял процессор на этом компьютере — верим ему, если совпадает число потоков.
+    // Человек уже выбирал процессор на этом устройстве — верим ему, если выбор подходит устройству.
     const saved = params.get("cpu") || store.get("nb.cpu");
     const known = saved && !saved.startsWith("other:") ? byKey(saved) : null;
     if (saved && saved.startsWith("other:")) choose({ other: true, name: saved.slice(6) }, "manual");
-    else if (known && known.threads === THREADS) choose(known, "sure");
-    else if (G.list.length) choose(G.list[0].c, G.list[0].s >= 100 ? "sure" : "auto");
+    else if (known && fits(known)) choose(known, "sure", "выбран вами раньше");
+    else if (G.conf !== "low" && G.list.length) choose(G.list[0].c, G.conf);
     else paint();
     openPicker(!chosen);
+  }
+
+  // ---------- разрешение на нагрузку ----------
+  const plannedMs = (points) => 3 * (T.freq + 400) + TESTS.length * (2 * T.warm + T.single + T.multi) + T.fps + T.fpsWarm
+    + points * (T.warm + T.scale) + T.marathon * 1000;
+  function etaText() {
+    const sec = (plannedMs(scalePoints(THREADS, chosen ? chosen.cores : estCores()).length) * 1.15) / 1000;
+    const m = Math.round(sec / 30) / 2; // с точностью до полминуты
+    return m <= 1 ? "около минуты" : m % 1 ? `около ${fmt(m, 1)} минуты` : `около ${m} минут`;
+  }
+  function askConsent() {
+    $("consent").hidden = false;
+    $("live").hidden = true;
+    $("eta").textContent = etaText();
+    $("consent-phone").hidden = !mobileKind();
+    const onBattery = !!(POWER && POWER.battery && POWER.plugged === false);
+    $("power-warn").hidden = !onBattery;
+    if (onBattery) {
+      $("power-warn").textContent = `${mobileKind() ? "Устройство" : "Ноутбук"} работает от батареи — процессор будет ограничен, `
+        + "очки выйдут ниже, а заряд быстро уйдёт. Лучше подключить зарядку.";
+    }
+    $("allow").focus({ preventScroll: true });
+  }
+  async function start() {
+    $("start").hidden = true;
+    $("run").hidden = false;
+    window.scrollTo(0, 0);
+    await detect();
+    askConsent();
+  }
+  function allow() {
+    $("consent").hidden = true;
+    $("power-warn").hidden = true;
+    $("live").hidden = false;
+    run();
+  }
+  function deny() {
+    $("run").hidden = true;
+    $("start").hidden = false;
+    $("go").focus({ preventScroll: true });
   }
 
   // ---------- ход теста ----------
@@ -295,7 +349,7 @@
       li.classList.toggle("now", i === n - 1);
     });
     $("stage").textContent = `${n} из ${STEPS.length} · ${STEPS[n - 1]}`;
-    $("current").textContent = current || (test ? `${test.title} · ${k === 1 ? "1 поток" : `${k} потоков`}` : `${k} потоков`);
+    $("current").textContent = current || (test ? `${test.title} · ${plural(k, THR)}` : plural(k, THR));
     document.querySelectorAll("#tests tbody tr").forEach((tr) => tr.classList.toggle("active", !!test && tr.id === "row-" + test.key));
   }
   function setProgress(p) {
@@ -355,18 +409,9 @@
     return [...ks].filter((k) => k >= 1 && k <= threads).sort((a, b) => a - b);
   }
 
-  // ---------- тест ----------
+  // ---------- тест (запускается только после разрешения) ----------
   let pool = null, running = false, hidden = false;
   let result = null, saving = false, saved = false; // result — готовый замер, ещё не сохранённый в топ
-
-  async function start() {
-    $("start").hidden = true;
-    $("run").hidden = false;
-    window.scrollTo(0, 0);
-    await detect();
-    battery().then((b) => { $("power-warn").hidden = !(b.battery && b.plugged === false); });
-    run();
-  }
 
   async function run() {
     if (running) return;
@@ -388,8 +433,7 @@
 
     const cores = chosen ? chosen.cores : estCores();
     const points = scalePoints(THREADS, cores);
-    const total = 3 * (T.freq + 400) + TESTS.length * (2 * T.warm + T.single + T.multi) + T.fps + T.fpsWarm
-      + points.length * (T.warm + T.scale) + T.marathon * 1000;
+    const total = plannedMs(points.length);
     let doneMs = 0, stepMs = 0, stepAt = performance.now();
     const step = (ms) => { doneMs += stepMs; stepMs = ms; stepAt = performance.now(); };
     const timer = setInterval(() => setProgress(Math.min(0.99, (doneMs + Math.min(stepMs, performance.now() - stepAt)) / total)), 200);
@@ -413,7 +457,7 @@
       const [f1] = await pool.run(1, { cmd: "freq", ms: T.freq });
       freq.single = f1.ghz;
       $("freq-1").textContent = ghz(f1.ghz);
-      stage(1, `все ${THREADS} потоков`, null, THREADS);
+      stage(1, `все ${plural(THREADS, THR)}`, null, THREADS);
       step(T.freq + 400);
       const fa = await pool.run(THREADS, { cmd: "freq", ms: T.freq });
       freq.multi = median(fa.map((r) => r.ghz));
@@ -495,7 +539,7 @@
     } catch (err) {
       if (err instanceof Cancelled) {
         $("stage").textContent = "Тест остановлен";
-        $("current").textContent = "Результат не сохранён.";
+        $("current").textContent = "Нагрузка снята. Результат не сохранён.";
       } else {
         fail(err && err.message ? err.message : String(err));
       }
@@ -562,6 +606,8 @@
   }
 
   $("go").addEventListener("click", start);
+  $("allow").addEventListener("click", allow);
+  $("deny").addEventListener("click", deny);
   $("again").addEventListener("click", run);
   $("save").addEventListener("click", save);
   $("name").addEventListener("keydown", (e) => { if (e.key === "Enter") save(); });
@@ -571,7 +617,8 @@
     if (running || (result && !saved)) { e.preventDefault(); e.returnValue = ""; }
   });
 
-  // ---------- начальное состояние: пусто, только кнопка ----------
+  // ---------- начальное состояние: пусто, только кнопка. Даже ссылка с ?start=1 лишь показывает
+  // устройство и спрашивает разрешения — нагрузка без нажатия «Разрешить и начать» не начинается. ----------
   $("name").value = params.get("name") || store.get("nb.name") || "";
   if (params.get("start") === "1") start();
 })();

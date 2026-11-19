@@ -13,7 +13,7 @@ from . import payload
 from .engine import analysis, cpus, meta
 from .models import Result
 
-ASSET_V = "6"
+ASSET_V = "7"
 
 # Защита топа от засорения: не больше SAVE_LIMIT сохранений с одного адреса за SAVE_WINDOW секунд.
 SAVE_LIMIT, SAVE_WINDOW = 8, 15 * 60
@@ -24,7 +24,7 @@ def _cfg():
         format=meta.FORMAT, ref=meta.REF, worker=static("bench/js/worker.js") + "?v=" + ASSET_V,
         fps_objects=meta.FPS_OBJECTS,
         tests=[dict(key=t["key"], code=t["code"], title=t["title"], unit=t["unit"]) for t in meta.TESTS],
-        catalog=cpus.for_browser(), gpu_rules=cpus.GPU_RULES,
+        catalog=cpus.for_browser(), gpu_rules=cpus.GPU_RULES, model_rules=cpus.MODEL_RULES,
     )
 
 

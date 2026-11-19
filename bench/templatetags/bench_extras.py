@@ -2,18 +2,20 @@ import re
 
 from django import template
 
+from ..engine.cpus import VENDORS
+
 register = template.Library()
 
 
 @register.filter
 def vendor_name(v):
-    return {"intel": "Intel", "amd": "AMD", "apple": "Apple"}.get(v, "CPU")
+    return VENDORS.get(v, "CPU")
 
 
 @register.filter
 def short_cpu(name):
     """«AMD Ryzen 7 6800H» → «Ryzen 7 6800H»: фирма и так написана отдельно."""
-    return re.sub(r"^(AMD|Intel|Apple)\s+", "", name or "", flags=re.I)
+    return re.sub(r"^(AMD|Intel|Apple|Qualcomm|MediaTek|Samsung|Google|Unisoc|HiSilicon)\s+", "", name or "", flags=re.I)
 
 
 @register.filter

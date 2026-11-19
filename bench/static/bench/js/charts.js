@@ -1,7 +1,8 @@
 /* Два графика на canvas без библиотек: масштабирование по потокам и марафон. */
 const Charts = (() => {
   "use strict";
-  const COL = { signal: "#c6ff3d", intel: "#6fb3ff", amd: "#ff7a66", apple: "#d6d6d6", other: "#6fd6c6", other2: "#b393ff" };
+  const COL = { signal: "#c6ff3d", intel: "#6fb3ff", amd: "#ff7a66", apple: "#d6d6d6", other: "#6fd6c6", other2: "#b393ff",
+    qualcomm: "#ff6f9c", mediatek: "#f2d04b", samsung: "#8f9cff", google: "#b98cff" };
   const INK = "#f1f1f1", MU = "#858585", GRID = "#232323", BG = "#171717";
   const FONT = '500 11.5px Manrope, "Segoe UI", sans-serif';
   const BOLD = '700 11.5px Manrope, "Segoe UI", sans-serif';

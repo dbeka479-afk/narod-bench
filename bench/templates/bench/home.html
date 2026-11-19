@@ -6,7 +6,7 @@
   <p class="lead">Около минуты, прямо в браузере. Ничего устанавливать не нужно.</p>
   <button class="btn-start" id="go" type="button">Начать</button>
   {% if stats.runs %}<p class="count"><b>{{ stats.runs|ru }}</b> замеров · <b>{{ stats.cpus|ru }}</b> процессоров в <a href="{% url 'top' %}">общем топе</a></p>{% endif %}
-  <p class="note small">Закройте тяжёлые программы и не сворачивайте вкладку, пока идёт тест.</p>
+  <p class="note small">Нагрузка на процессор начнётся только после вашего разрешения.</p>
 </section>
 
 <section class="run" id="run" hidden aria-label="Ваш компьютер и ход теста">
@@ -28,14 +28,29 @@
   </div>
 
   <dl class="facts">
+    <div><dt>Устройство</dt><dd id="det-kind">—</dd></div>
     <div><dt>Ядра / потоки</dt><dd id="det-cores">—</dd></div>
     <div><dt>Графика</dt><dd id="det-gpu">—</dd></div>
     <div><dt>Система</dt><dd id="det-os">—</dd></div>
     <div><dt>Память</dt><dd id="det-ram">—</dd></div>
   </dl>
-  <p class="note warn" id="power-warn" hidden>Ноутбук работает от батареи — процессор будет ограничен, очки выйдут ниже. Подключите зарядку.</p>
 
-  <section class="panel live" id="live" aria-live="polite">
+  <section class="panel consent" id="consent" hidden aria-labelledby="consent-h">
+    <h2 id="consent-h">Можно нагрузить процессор?</h2>
+    <p>Тест займёт <b id="eta">около минуты</b>. Всё это время процессор будет загружен почти на&nbsp;100%: устройство нагреется, вентиляторы могут зашуметь<span id="consent-phone" hidden>, заряд будет уходить быстрее обычного</span>.</p>
+    <ul class="consent-list">
+      <li>Закройте игры и тяжёлые программы — иначе они будут тормозить, а очки выйдут ниже.</li>
+      <li>Не сворачивайте вкладку, пока идёт тест.</li>
+      <li>Остановить можно в любой момент кнопкой «Остановить» — нагрузка сразу снимется.</li>
+    </ul>
+    <p class="note warn" id="power-warn" hidden></p>
+    <div class="consent-actions">
+      <button class="btn-go" id="allow" type="button">Разрешить и начать</button>
+      <button class="btn-ghost" id="deny" type="button">Не сейчас</button>
+    </div>
+  </section>
+
+  <section class="panel live" id="live" hidden aria-live="polite">
     <div class="live-head">
       <div>
         <p class="stage" id="stage">—</p>
@@ -106,5 +121,6 @@
 {% endblock %}
 {% block scripts %}
 <script src="{% static 'bench/js/charts.js' %}?v={{ V }}"></script>
+<script src="{% static 'bench/js/guess.js' %}?v={{ V }}"></script>
 <script src="{% static 'bench/js/bench.js' %}?v={{ V }}"></script>
 {% endblock %}
